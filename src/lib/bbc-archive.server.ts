@@ -5,6 +5,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { cache } from "react";
 
+import { bundledBbcDriveManifest } from "@/data/bbc/bundled-drive-manifest";
+
 interface ArchiveSpec {
   fileName: string;
   startUnit: number;
@@ -220,8 +222,22 @@ function isRemoteManifestUnit(value: unknown): value is RemoteManifestUnit {
   return typeof unit.unitNumber === "number";
 }
 
+function getBundledRemoteManifest(): RemoteManifest | null {
+  if (!bundledBbcDriveManifest.units.length) return null;
+
+  return {
+    note: bundledBbcDriveManifest.note,
+    units: bundledBbcDriveManifest.units.map((unit) => ({
+      unitNumber: unit.unitNumber,
+      archiveLabel: unit.archiveLabel,
+      audioUrl: unit.audioUrl,
+      pdfUrl: unit.pdfUrl
+    }))
+  };
+}
+
 const loadRemoteManifest = cache(async (): Promise<RemoteManifest | null> => {
-  if (!BBC_REMOTE_MANIFEST_URL) return null;
+  if (!BBC_REMOTE_MANIFEST_URL) return getBundledRemoteManifest();
 
   try {
     const response = await fetch(BBC_REMOTE_MANIFEST_URL, {
@@ -229,22 +245,22 @@ const loadRemoteManifest = cache(async (): Promise<RemoteManifest | null> => {
     });
 
     if (!response.ok) {
-      return null;
+      return getBundledRemoteManifest();
     }
 
     const data = (await response.json()) as unknown;
-    if (!data || typeof data !== "object") return null;
+    if (!data || typeof data !== "object") return getBundledRemoteManifest();
 
     const manifest = data as Record<string, unknown>;
     const units = Array.isArray(manifest.units) ? manifest.units.filter(isRemoteManifestUnit) : [];
-    if (!units.length) return null;
+    if (!units.length) return getBundledRemoteManifest();
 
     return {
       units,
       note: typeof manifest.note === "string" ? manifest.note : undefined
     };
   } catch {
-    return null;
+    return getBundledRemoteManifest();
   }
 });
 
@@ -347,8 +363,8 @@ export async function getBbcLibraryData(): Promise<BbcLibraryData> {
       summary: buildSummary(remoteUnits),
       note:
         remoteManifest.note ||
-        "Biblioteca remota activa. En este despliegue, los PDF y audios BBC se sirven desde storage remoto mediante un manifiesto.",
-      manifestUrl: BBC_REMOTE_MANIFEST_URL
+        "Biblioteca remota activa. En este despliegue, los PDF y audios BBC se sirven desde Google Drive mediante un manifiesto.",
+      manifestUrl: BBC_REMOTE_MANIFEST_URL || undefined
     };
   }
 
@@ -357,7 +373,7 @@ export async function getBbcLibraryData(): Promise<BbcLibraryData> {
     units: [],
     summary: { totalUnits: 0, withAudio: 0, withPdf: 0 },
     note:
-      "No hay archivos BBC disponibles en este despliegue. En local funciona con cursos/*.rar; en produccion necesitas storage remoto y BBC_REMOTE_MANIFEST_URL."
+      "No hay archivos BBC disponibles en este despliegue. En local funciona con cursos/*.rar; en produccion usa un manifiesto remoto o el fallback embebido de Drive."
   };
 }
 

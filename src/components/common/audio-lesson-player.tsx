@@ -10,6 +10,7 @@ interface AudioLessonPlayerProps {
   title: string;
   description?: string;
   compact?: boolean;
+  preloadMode?: "none" | "metadata" | "auto";
 }
 
 function formatTime(timeInSeconds: number) {
@@ -22,11 +23,11 @@ function formatTime(timeInSeconds: number) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-export function AudioLessonPlayer({ src, title, description, compact = false }: AudioLessonPlayerProps) {
-  return <AudioLessonPlayerInner key={src} src={src} title={title} description={description} compact={compact} />;
+export function AudioLessonPlayer({ src, title, description, compact = false, preloadMode = "metadata" }: AudioLessonPlayerProps) {
+  return <AudioLessonPlayerInner key={src} src={src} title={title} description={description} compact={compact} preloadMode={preloadMode} />;
 }
 
-function AudioLessonPlayerInner({ src, title, description, compact = false }: AudioLessonPlayerProps) {
+function AudioLessonPlayerInner({ src, title, description, compact = false, preloadMode = "metadata" }: AudioLessonPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [speedIndex, setSpeedIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -45,6 +46,14 @@ function AudioLessonPlayerInner({ src, title, description, compact = false }: Au
 
     audio.playbackRate = speed;
   }, [speed]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    audio.preload = preloadMode;
+    audio.load();
+  }, [preloadMode, src]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -146,7 +155,7 @@ function AudioLessonPlayerInner({ src, title, description, compact = false }: Au
 
       {loadError ? <p className="text-xs font-medium text-amber-700 dark:text-amber-300">{loadError}</p> : null}
 
-      <audio ref={audioRef} preload="metadata">
+      <audio ref={audioRef} preload={preloadMode} playsInline>
         <source src={src} type="audio/mpeg" />
       </audio>
 

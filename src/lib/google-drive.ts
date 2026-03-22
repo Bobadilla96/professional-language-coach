@@ -19,6 +19,7 @@ export function normalizeGoogleDriveAssetUrl(url: string, asset: "audio" | "pdf"
   const driveFileId = extractGoogleDriveFileId(url);
   if (!driveFileId) {
     return {
+      href: url,
       openHref: url,
       embedHref: asset === "pdf" ? url : undefined
     };
@@ -26,12 +27,14 @@ export function normalizeGoogleDriveAssetUrl(url: string, asset: "audio" | "pdf"
 
   if (asset === "audio") {
     return {
+      href: `https://drive.google.com/uc?export=download&id=${driveFileId}`,
       openHref: `https://drive.google.com/uc?export=download&id=${driveFileId}`,
       embedHref: undefined
     };
   }
 
   return {
+    href: `https://drive.google.com/uc?export=download&id=${driveFileId}`,
     openHref: `https://drive.google.com/file/d/${driveFileId}/view`,
     embedHref: `https://drive.google.com/file/d/${driveFileId}/preview`
   };

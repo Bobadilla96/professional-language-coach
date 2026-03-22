@@ -358,11 +358,12 @@ export async function getBbcUnitAssetReference(unitNumber: number, asset: "audio
   const remoteAsset = await getRemoteBbcUnitAsset(unitNumber, asset);
   if (remoteAsset) {
     const normalized = normalizeRemoteAssetUrl(remoteAsset.href, asset);
+    const proxyHref = `/api/bbc/${unitNumber}/${asset}`;
     return {
       mode: "remote",
-      href: normalized.openHref,
-      openHref: normalized.openHref,
-      embedHref: normalized.embedHref,
+      href: normalized.href,
+      openHref: proxyHref,
+      embedHref: asset === "pdf" ? proxyHref : undefined,
       fileName: remoteAsset.fileName
     };
   }

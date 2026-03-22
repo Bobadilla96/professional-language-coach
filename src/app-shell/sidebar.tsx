@@ -2,12 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, useSyncExternalStore } from "react";
 import { BookOpenText, ChartColumnBig, GraduationCap, Headphones, LayoutDashboard, MessagesSquare, PenSquare, PencilRuler } from "lucide-react";
 import { AudioLessonPlayer } from "@/components/common/audio-lesson-player";
-import { bundledBbcDriveManifest } from "@/data/bbc/bundled-drive-manifest";
 import { useUiText } from "@/hooks/use-ui-text";
-import { normalizeGoogleDriveAssetUrl } from "@/lib/google-drive";
 import { cn } from "@/lib/utils";
 
 export function Sidebar() {
@@ -15,29 +12,6 @@ export function Sidebar() {
   const { t } = useUiText();
   const bbcUnitMatch = pathname.match(/^\/bbc\/(\d+)$/);
   const currentBbcUnit = bbcUnitMatch ? Number(bbcUnitMatch[1]) : null;
-  const canUseDirectRemoteAudio = useSyncExternalStore(
-    () => () => undefined,
-    () => {
-      const hostname = window.location.hostname;
-      return hostname !== "localhost" && hostname !== "127.0.0.1";
-    },
-    () => false
-  );
-
-  const currentBbcAudioSrc = useMemo(() => {
-    if (!currentBbcUnit) return null;
-
-    if (!canUseDirectRemoteAudio) {
-      return `/api/bbc/${currentBbcUnit}/audio`;
-    }
-
-    const entry = bundledBbcDriveManifest.units.find((unit) => unit.unitNumber === currentBbcUnit);
-    if (!entry?.audioUrl) {
-      return `/api/bbc/${currentBbcUnit}/audio`;
-    }
-
-    return normalizeGoogleDriveAssetUrl(entry.audioUrl, "audio").openHref;
-  }, [canUseDirectRemoteAudio, currentBbcUnit]);
 
   const items = [
     { href: "/dashboard", label: t("dashboard"), icon: LayoutDashboard },
@@ -82,10 +56,10 @@ export function Sidebar() {
         <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-300">{t("humilityValueDescription")}</p>
       </div>
 
-      {currentBbcUnit && currentBbcAudioSrc ? (
+      {currentBbcUnit ? (
         <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
           <AudioLessonPlayer
-            src={currentBbcAudioSrc}
+            src={`/api/bbc/${currentBbcUnit}/audio`}
             title={`Audio Unit ${String(currentBbcUnit).padStart(2, "0")}`}
             description="Reproductor rapido visible mientras lees la unidad."
             compact

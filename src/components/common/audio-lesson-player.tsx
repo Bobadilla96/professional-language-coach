@@ -32,6 +32,7 @@ function AudioLessonPlayerInner({ src, title, description, compact = false }: Au
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const speed = SPEED_OPTIONS[speedIndex];
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -50,6 +51,7 @@ function AudioLessonPlayerInner({ src, title, description, compact = false }: Au
     if (!audio) return;
 
     const handleLoadedMetadata = () => {
+      setLoadError(null);
       setDuration(audio.duration || 0);
       setCurrentTime(audio.currentTime || 0);
     };
@@ -71,11 +73,17 @@ function AudioLessonPlayerInner({ src, title, description, compact = false }: Au
       setIsPlaying(true);
     };
 
+    const handleError = () => {
+      setIsPlaying(false);
+      setLoadError("Audio no disponible en este entorno.");
+    };
+
     audio.addEventListener("loadedmetadata", handleLoadedMetadata);
     audio.addEventListener("timeupdate", handleTimeUpdate);
     audio.addEventListener("ended", handleEnded);
     audio.addEventListener("pause", handlePause);
     audio.addEventListener("play", handlePlay);
+    audio.addEventListener("error", handleError);
 
     return () => {
       audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
@@ -83,6 +91,7 @@ function AudioLessonPlayerInner({ src, title, description, compact = false }: Au
       audio.removeEventListener("ended", handleEnded);
       audio.removeEventListener("pause", handlePause);
       audio.removeEventListener("play", handlePlay);
+      audio.removeEventListener("error", handleError);
     };
   }, [src]);
 
@@ -134,6 +143,8 @@ function AudioLessonPlayerInner({ src, title, description, compact = false }: Au
           </p>
         ) : null}
       </div>
+
+      {loadError ? <p className="text-xs font-medium text-amber-700 dark:text-amber-300">{loadError}</p> : null}
 
       <audio ref={audioRef} preload="metadata">
         <source src={src} type="audio/mpeg" />

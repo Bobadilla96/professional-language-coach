@@ -3,6 +3,7 @@ import "server-only";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { cache } from "react";
 
 interface ArchiveSpec {
   fileName: string;
@@ -16,6 +17,19 @@ interface ArchiveIndex extends ArchiveSpec {
   entries: string[];
 }
 
+interface RemoteManifestUnit {
+  unitNumber: number;
+  unitLabel?: string;
+  archiveLabel?: string;
+  audioUrl?: string;
+  pdfUrl?: string;
+}
+
+interface RemoteManifest {
+  units: RemoteManifestUnit[];
+  note?: string;
+}
+
 export interface BbcUnit {
   unitNumber: number;
   unitLabel: string;
@@ -24,12 +38,50 @@ export interface BbcUnit {
   pdfAvailable: boolean;
 }
 
+export interface BbcLibrarySummary {
+  totalUnits: number;
+  withAudio: number;
+  withPdf: number;
+}
+
+export interface BbcLibraryData {
+  source: "local" | "remote" | "unavailable";
+  units: BbcUnit[];
+  summary: BbcLibrarySummary;
+  note: string;
+  manifestUrl?: string;
+}
+
+export interface BbcUnitAssetReference {
+  mode: "local" | "remote";
+  href: string;
+  openHref: string;
+  embedHref?: string;
+  fileName: string;
+}
+
 const BBC_ROOT = path.join(process.cwd(), "cursos");
+const BBC_REMOTE_MANIFEST_URL = process.env.BBC_REMOTE_MANIFEST_URL?.trim();
 
 let archiveCache: ArchiveIndex[] | null = null;
 
 function formatUnitNumber(unitNumber: number) {
   return String(unitNumber).padStart(2, "0");
+}
+
+function inferArchiveLabel(unitNumber: number) {
+  if (unitNumber <= 25) return "Units 01-25";
+  if (unitNumber <= 50) return "Units 26-50";
+  if (unitNumber <= 75) return "Units 51-75";
+  return "Units 76-96";
+}
+
+function buildSummary(units: BbcUnit[]): BbcLibrarySummary {
+  return {
+    totalUnits: units.length,
+    withAudio: units.filter((unit) => unit.audioAvailable).length,
+    withPdf: units.filter((unit) => unit.pdfAvailable).length
+  };
 }
 
 function listArchiveEntries(filePath: string) {
@@ -130,15 +182,10 @@ export function getBbcUnitCatalog(): BbcUnit[] {
 }
 
 export function getBbcLibrarySummary() {
-  const units = getBbcUnitCatalog();
-  return {
-    totalUnits: units.length,
-    withAudio: units.filter((unit) => unit.audioAvailable).length,
-    withPdf: units.filter((unit) => unit.pdfAvailable).length
-  };
+  return buildSummary(getBbcUnitCatalog());
 }
 
-export function getBbcUnitAsset(unitNumber: number, asset: "audio" | "pdf") {
+function getLocalBbcUnitAsset(unitNumber: number, asset: "audio" | "pdf") {
   const archive = findArchiveForUnit(unitNumber);
   if (!archive) return null;
 
@@ -153,7 +200,7 @@ export function getBbcUnitAsset(unitNumber: number, asset: "audio" | "pdf") {
 }
 
 export function extractBbcUnitAsset(unitNumber: number, asset: "audio" | "pdf") {
-  const result = getBbcUnitAsset(unitNumber, asset);
+  const result = getLocalBbcUnitAsset(unitNumber, asset);
   if (!result) return null;
 
   const buffer = execFileSync("tar", ["-xOf", result.archivePath, result.entry], {
@@ -165,4 +212,178 @@ export function extractBbcUnitAsset(unitNumber: number, asset: "audio" | "pdf") 
     ...result,
     buffer
   };
+}
+
+function isRemoteManifestUnit(value: unknown): value is RemoteManifestUnit {
+  if (!value || typeof value !== "object") return false;
+  const unit = value as Record<string, unknown>;
+  return typeof unit.unitNumber === "number";
+}
+
+const loadRemoteManifest = cache(async (): Promise<RemoteManifest | null> => {
+  if (!BBC_REMOTE_MANIFEST_URL) return null;
+
+  try {
+    const response = await fetch(BBC_REMOTE_MANIFEST_URL, {
+      next: { revalidate: 300 }
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as unknown;
+    if (!data || typeof data !== "object") return null;
+
+    const manifest = data as Record<string, unknown>;
+    const units = Array.isArray(manifest.units) ? manifest.units.filter(isRemoteManifestUnit) : [];
+    if (!units.length) return null;
+
+    return {
+      units,
+      note: typeof manifest.note === "string" ? manifest.note : undefined
+    };
+  } catch {
+    return null;
+  }
+});
+
+function mapRemoteUnits(units: RemoteManifestUnit[]): BbcUnit[] {
+  return units
+    .slice()
+    .sort((a, b) => a.unitNumber - b.unitNumber)
+    .map((unit) => ({
+      unitNumber: unit.unitNumber,
+      unitLabel: unit.unitLabel?.trim() || `Unit ${formatUnitNumber(unit.unitNumber)}`,
+      archiveLabel: unit.archiveLabel?.trim() || inferArchiveLabel(unit.unitNumber),
+      audioAvailable: Boolean(unit.audioUrl),
+      pdfAvailable: Boolean(unit.pdfUrl)
+    }));
+}
+
+function readFileNameFromUrl(url: string, fallback: string) {
+  try {
+    const parsed = new URL(url);
+    const name = path.basename(parsed.pathname);
+    return name || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function extractGoogleDriveFileId(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname.includes("drive.google.com") && !parsed.hostname.includes("docs.google.com")) {
+      return null;
+    }
+
+    const fromQuery = parsed.searchParams.get("id");
+    if (fromQuery) return fromQuery;
+
+    const match = parsed.pathname.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    return match?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeRemoteAssetUrl(url: string, asset: "audio" | "pdf") {
+  const driveFileId = extractGoogleDriveFileId(url);
+  if (!driveFileId) {
+    return {
+      openHref: url,
+      embedHref: asset === "pdf" ? url : undefined
+    };
+  }
+
+  if (asset === "audio") {
+    return {
+      openHref: `https://drive.google.com/uc?export=download&id=${driveFileId}`,
+      embedHref: undefined
+    };
+  }
+
+  return {
+    openHref: `https://drive.google.com/file/d/${driveFileId}/view`,
+    embedHref: `https://drive.google.com/file/d/${driveFileId}/preview`
+  };
+}
+
+async function getRemoteBbcUnitAsset(unitNumber: number, asset: "audio" | "pdf") {
+  const manifest = await loadRemoteManifest();
+  if (!manifest) return null;
+
+  const unit = manifest.units.find((entry) => entry.unitNumber === unitNumber);
+  if (!unit) return null;
+
+  const href = asset === "audio" ? unit.audioUrl : unit.pdfUrl;
+  if (!href) return null;
+
+  const fallbackName = `${formatUnitNumber(unitNumber)}.${asset === "audio" ? "mp3" : "pdf"}`;
+  return {
+    href,
+    fileName: readFileNameFromUrl(href, fallbackName)
+  };
+}
+
+export async function getBbcLibraryData(): Promise<BbcLibraryData> {
+  const localUnits = getBbcUnitCatalog();
+  if (localUnits.length > 0) {
+    return {
+      source: "local",
+      units: localUnits,
+      summary: buildSummary(localUnits),
+      note: "Biblioteca local activa. La app abre cada MP3 o PDF directamente desde tus RAR sin extraer todo al disco."
+    };
+  }
+
+  const remoteManifest = await loadRemoteManifest();
+  if (remoteManifest) {
+    const remoteUnits = mapRemoteUnits(remoteManifest.units);
+    return {
+      source: "remote",
+      units: remoteUnits,
+      summary: buildSummary(remoteUnits),
+      note:
+        remoteManifest.note ||
+        "Biblioteca remota activa. En este despliegue, los PDF y audios BBC se sirven desde storage remoto mediante un manifiesto.",
+      manifestUrl: BBC_REMOTE_MANIFEST_URL
+    };
+  }
+
+  return {
+    source: "unavailable",
+    units: [],
+    summary: { totalUnits: 0, withAudio: 0, withPdf: 0 },
+    note:
+      "No hay archivos BBC disponibles en este despliegue. En local funciona con cursos/*.rar; en produccion necesitas storage remoto y BBC_REMOTE_MANIFEST_URL."
+  };
+}
+
+export async function getBbcUnitAssetReference(unitNumber: number, asset: "audio" | "pdf"): Promise<BbcUnitAssetReference | null> {
+  const localAsset = getLocalBbcUnitAsset(unitNumber, asset);
+  if (localAsset) {
+    return {
+      mode: "local",
+      href: `/api/bbc/${unitNumber}/${asset}`,
+      openHref: `/api/bbc/${unitNumber}/${asset}`,
+      embedHref: asset === "pdf" ? `/api/bbc/${unitNumber}/${asset}` : undefined,
+      fileName: localAsset.fileName
+    };
+  }
+
+  const remoteAsset = await getRemoteBbcUnitAsset(unitNumber, asset);
+  if (remoteAsset) {
+    const normalized = normalizeRemoteAssetUrl(remoteAsset.href, asset);
+    return {
+      mode: "remote",
+      href: normalized.openHref,
+      openHref: normalized.openHref,
+      embedHref: normalized.embedHref,
+      fileName: remoteAsset.fileName
+    };
+  }
+
+  return null;
 }

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { extractBbcUnitAsset } from "@/lib/bbc-archive.server";
+import { extractBbcUnitAsset, getBbcUnitAssetReference } from "@/lib/bbc-archive.server";
 
 function getContentType(asset: string) {
   if (asset === "audio") return "audio/mpeg";
@@ -16,6 +16,15 @@ export async function GET(
 
   if (Number.isNaN(unitNumber) || (asset !== "audio" && asset !== "pdf")) {
     notFound();
+  }
+
+  const reference = await getBbcUnitAssetReference(unitNumber, asset);
+  if (!reference) {
+    notFound();
+  }
+
+  if (reference.mode === "remote") {
+    return Response.redirect(reference.href, 307);
   }
 
   const extracted = extractBbcUnitAsset(unitNumber, asset);

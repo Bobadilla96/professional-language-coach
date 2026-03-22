@@ -89,6 +89,7 @@ OPENROUTER_API_KEY=
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 VIBEVOICE_BASE_URL=http://127.0.0.1:8000
 NEXT_PUBLIC_VIBEVOICE_BASE_URL=http://127.0.0.1:8000
+BBC_REMOTE_MANIFEST_URL=
 ```
 
 Notes:
@@ -133,6 +134,7 @@ Important:
 - those folders are intentionally gitignored
 - BBC PDF/audio integration works only when the local archives exist on the machine
 - this keeps the repository lightweight and avoids publishing copyrighted/private course assets
+- for production deployments, configure `BBC_REMOTE_MANIFEST_URL` with a JSON manifest that points to remote audio/PDF URLs
 
 ## Deployment note
 This project is not a good candidate for GitHub Pages because it relies on:
@@ -142,6 +144,53 @@ This project is not a good candidate for GitHub Pages because it relies on:
 - local archive streaming for BBC assets
 
 For a real public deployment, use a server-capable platform such as Vercel.
+
+### BBC in production
+If you deploy to Vercel or Netlify, local `cursos/*.rar` files will not exist there.
+
+Use a remote manifest instead:
+
+```json
+{
+  "note": "BBC assets served from remote storage",
+  "units": [
+    {
+      "unitNumber": 1,
+      "archiveLabel": "Units 01-25",
+      "audioUrl": "https://example.com/bbc/unit-01.mp3",
+      "pdfUrl": "https://example.com/bbc/unit-01.pdf"
+    }
+  ]
+}
+```
+
+Then set:
+
+```bash
+BBC_REMOTE_MANIFEST_URL=https://your-storage.example.com/bbc-manifest.json
+```
+
+Google Drive is also supported for remote BBC assets, but only if the manifest points to shared file URLs for each PDF/MP3. A folder containing only `.rar` archives is not enough for production playback/embed.
+
+Example with Drive shared links:
+
+```json
+{
+  "note": "BBC pilot served from Google Drive",
+  "units": [
+    {
+      "unitNumber": 1,
+      "archiveLabel": "Units 01-25",
+      "audioUrl": "https://drive.google.com/file/d/DRIVE_AUDIO_FILE_ID/view?usp=sharing",
+      "pdfUrl": "https://drive.google.com/file/d/DRIVE_PDF_FILE_ID/view?usp=sharing"
+    }
+  ]
+}
+```
+
+The app converts those Drive links to:
+- `preview` embed for PDFs
+- direct download/stream URL for audio
 
 ## Demo login
 Only available when Supabase env vars are not configured:

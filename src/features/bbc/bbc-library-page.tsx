@@ -2,7 +2,7 @@ import Link from "next/link";
 import { BookOpenText } from "lucide-react";
 import { SectionTitle } from "@/components/common/section-title";
 import { Card } from "@/components/ui/card";
-import { getBbcLibrarySummary, getBbcUnitCatalog } from "@/lib/bbc-archive.server";
+import { getBbcLibraryData } from "@/lib/bbc-archive.server";
 
 const GROUPS = [
   { label: "Units 01-25", start: 1, end: 25 },
@@ -11,16 +11,22 @@ const GROUPS = [
   { label: "Units 76-96", start: 76, end: 96 }
 ];
 
-export function BbcLibraryPage() {
-  const units = getBbcUnitCatalog();
-  const summary = getBbcLibrarySummary();
+export async function BbcLibraryPage() {
+  const library = await getBbcLibraryData();
+  const { units, summary } = library;
 
   return (
     <div className="space-y-5">
       <SectionTitle
         kicker="BBC English Archive"
         title="Biblioteca BBC English"
-        description="96 unidades locales con audio MP3 y cuaderno PDF embebido, servidos bajo demanda desde tus archivos RAR."
+        description={
+          library.source === "local"
+            ? "Unidades locales con audio MP3 y cuaderno PDF embebido, servidos bajo demanda desde tus archivos RAR."
+            : library.source === "remote"
+              ? "Biblioteca BBC disponible desde assets remotos para este despliegue."
+              : "La biblioteca BBC no esta disponible en este despliegue porque los archivos locales no se publican automaticamente."
+        }
       />
 
       <section className="grid gap-3 sm:grid-cols-3">
@@ -40,13 +46,32 @@ export function BbcLibraryPage() {
 
       <Card className="space-y-3">
         <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">
-          Esta biblioteca funciona sin extraer todo al disco. La app abre cada MP3 o PDF directamente desde el RAR cuando entras a una unidad.
-          Es la opcion correcta con el espacio libre actual.
+          {library.note}
         </p>
+        {library.source === "unavailable" ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-100">
+            <p className="font-semibold">Por que en Vercel aparece vacio</p>
+            <p className="mt-2">
+              Esta version intenta leer archivos locales `cursos/*.rar`. Esos archivos existen en tu PC, pero no en el filesystem del deploy. Para ver BBC en
+              produccion, mueve los audios/PDF a storage remoto y configura `BBC_REMOTE_MANIFEST_URL`.
+            </p>
+          </div>
+        ) : null}
       </Card>
+
+      {!units.length ? (
+        <Card className="space-y-3">
+          <p className="text-base font-semibold">No hay unidades visibles en este entorno</p>
+          <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">
+            Puedes seguir usando el resto de la plataforma. Si quieres publicar BBC, el siguiente paso es preparar un manifiesto remoto con URLs de audio/PDF y
+            exponerlo mediante `BBC_REMOTE_MANIFEST_URL`.
+          </p>
+        </Card>
+      ) : null}
 
       {GROUPS.map((group) => {
         const groupUnits = units.filter((unit) => unit.unitNumber >= group.start && unit.unitNumber <= group.end);
+        if (!groupUnits.length) return null;
         return (
           <section key={group.label} className="space-y-3">
             <h3 className="text-lg font-semibold">{group.label}</h3>

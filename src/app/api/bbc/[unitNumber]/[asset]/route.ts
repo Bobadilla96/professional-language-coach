@@ -40,7 +40,14 @@ export async function GET(
     }
 
     const headers = new Headers();
-    headers.set("content-type", upstream.headers.get("content-type") || getContentType(asset));
+    const upstreamContentType = upstream.headers.get("content-type");
+    const effectiveContentType =
+      asset === "pdf"
+        ? "application/pdf"
+        : upstreamContentType && upstreamContentType !== "application/octet-stream"
+          ? upstreamContentType
+          : getContentType(asset);
+    headers.set("content-type", effectiveContentType);
     headers.set("content-disposition", `inline; filename="${encodeURIComponent(reference.fileName)}"`);
     headers.set("cache-control", "public, max-age=0, s-maxage=86400, stale-while-revalidate=604800");
 

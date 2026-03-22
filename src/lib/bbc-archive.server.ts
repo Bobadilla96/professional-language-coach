@@ -282,7 +282,10 @@ function readFileNameFromUrl(url: string, fallback: string) {
   try {
     const parsed = new URL(url);
     const name = path.basename(parsed.pathname);
-    return name || fallback;
+    if (!name || name === "view" || name === "preview" || !name.includes(".")) {
+      return fallback;
+    }
+    return name;
   } catch {
     return fallback;
   }

@@ -1,5 +1,5 @@
 export const bundledBbcDriveManifest = {
-  note: "BBC library served from Google Drive (Units 01-96)",
+  note: "BBC library served from Google Drive (scraped from public folders)",
   units: [
     {
       unitNumber: 1,

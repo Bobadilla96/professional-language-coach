@@ -1,0 +1,27 @@
+services:
+  vibevoice:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VIBEVOICE_REPO_REF: main
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: 8000
+      VIBEVOICE_MODEL_PATH: microsoft/VibeVoice-Realtime-0.5B
+      VIBEVOICE_DEVICE: cuda
+      VIBEVOICE_RELOAD: 0
+      HF_HOME: /data/hf
+    volumes:
+      - vibevoice-hf:/data/hf
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  vibevoice-hf:

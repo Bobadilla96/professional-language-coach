@@ -54,6 +54,10 @@ function toWsUrl(baseUrl: string, text: string, voice: string) {
   return `${normalizedBase.replace(/^http/, "ws")}/stream?${params.toString()}`;
 }
 
+function isLoopbackUrl(value: string) {
+  return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(value.trim());
+}
+
 function pcm16ToWavBlob(pcmBytes: Uint8Array, sampleRate: number) {
   const headerSize = 44;
   const wav = new Uint8Array(headerSize + pcmBytes.length);
@@ -187,6 +191,7 @@ export default function ConversationFeaturePage() {
   const [browserVoiceReady, setBrowserVoiceReady] = useState(false);
   const [dictationAvailable, setDictationAvailable] = useState(false);
   const [isDictating, setIsDictating] = useState(false);
+  const [isLocalEnvironment, setIsLocalEnvironment] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
 
@@ -218,7 +223,7 @@ export default function ConversationFeaturePage() {
           baseUrl: process.env.NEXT_PUBLIC_VIBEVOICE_BASE_URL ?? "http://127.0.0.1:8000",
           voices: [],
           defaultVoice: null,
-          error: language === "es" ? "No se pudo cargar la configuracion de VibeVoice." : "Could not load VibeVoice configuration."
+          error: "VIBEVOICE_UNREACHABLE"
         });
       });
 
@@ -229,6 +234,9 @@ export default function ConversationFeaturePage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+
+    const hostname = window.location.hostname;
+    setIsLocalEnvironment(hostname === "localhost" || hostname === "127.0.0.1");
 
     const synth = window.speechSynthesis;
     const loadVoices = () => {
@@ -249,6 +257,20 @@ export default function ConversationFeaturePage() {
       window.speechSynthesis?.cancel();
     };
   }, []);
+
+  const resolvedVibevoiceError = useMemo(() => {
+    if (!vibevoiceConfig?.error) return "";
+    if (vibevoiceConfig.error === "VIBEVOICE_UNREACHABLE") return t("vibevoiceUnavailableHint");
+    if (vibevoiceConfig.error === "VIBEVOICE_CONFIG_UNAVAILABLE") return t("vibevoiceUnavailableHint");
+    return vibevoiceConfig.error;
+  }, [t, vibevoiceConfig?.error]);
+
+  const hasConfiguredRemoteVibevoice = useMemo(() => {
+    if (!vibevoiceConfig?.baseUrl) return false;
+    return !isLoopbackUrl(vibevoiceConfig.baseUrl);
+  }, [vibevoiceConfig?.baseUrl]);
+
+  const showVibevoiceAdvancedPanel = isLocalEnvironment || hasConfiguredRemoteVibevoice || Boolean(vibevoiceConfig?.available);
 
   useEffect(() => {
     if (!audioUrl) return undefined;
@@ -619,53 +641,65 @@ export default function ConversationFeaturePage() {
             {isDictating ? <p className="text-xs text-sky-700 dark:text-sky-300">{t("dictationListening")}</p> : null}
           </Card>
 
-          <Card className="space-y-3">
-            <p className="text-sm font-semibold">{t("vibevoiceEngine")}</p>
-            <p className="text-xs text-slate-500">{t("vibevoiceEngineDescription")}</p>
+          {showVibevoiceAdvancedPanel ? (
+            <Card className="space-y-3">
+              <p className="text-sm font-semibold">{t("vibevoiceEngine")}</p>
+              <p className="text-xs text-slate-500">{t("vibevoiceEngineDescription")}</p>
 
-            <label className="space-y-1 text-sm">
-              <span className="font-medium">{t("serverUrl")}</span>
-              <Input value={vibevoiceConfig?.baseUrl ?? process.env.NEXT_PUBLIC_VIBEVOICE_BASE_URL ?? "http://127.0.0.1:8000"} readOnly />
-            </label>
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">{t("serverUrl")}</span>
+                <Input value={vibevoiceConfig?.baseUrl ?? process.env.NEXT_PUBLIC_VIBEVOICE_BASE_URL ?? "http://127.0.0.1:8000"} readOnly />
+              </label>
 
-            <label className="space-y-1 text-sm">
-              <span className="font-medium">{t("voicePreset")}</span>
-              <select
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-sky-500 dark:border-slate-700 dark:bg-slate-950"
-                value={selectedVoice}
-                onChange={(event) => setSelectedVoice(event.target.value)}
-                disabled={!vibevoiceConfig?.voices.length}
-              >
-                {vibevoiceConfig?.voices.length ? (
-                  vibevoiceConfig.voices.map((voice) => (
-                    <option key={voice} value={voice}>
-                      {voice}
-                    </option>
-                  ))
-                ) : (
-                  <option value="">{t("noVoicesAvailable")}</option>
-                )}
-              </select>
-            </label>
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">{t("voicePreset")}</span>
+                <select
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-sky-500 dark:border-slate-700 dark:bg-slate-950"
+                  value={selectedVoice}
+                  onChange={(event) => setSelectedVoice(event.target.value)}
+                  disabled={!vibevoiceConfig?.voices.length}
+                >
+                  {vibevoiceConfig?.voices.length ? (
+                    vibevoiceConfig.voices.map((voice) => (
+                      <option key={voice} value={voice}>
+                        {voice}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">{t("noVoicesAvailable")}</option>
+                  )}
+                </select>
+              </label>
 
-            {!vibevoiceConfig?.available ? (
-              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
-                {t("vibevoiceUnavailableHint")}
-              </p>
-            ) : null}
+              {!vibevoiceConfig?.available ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
+                  {t("vibevoiceUnavailableHint")}
+                </p>
+              ) : null}
 
-            {voiceStatus ? <p className="text-xs text-sky-700 dark:text-sky-300">{voiceStatus}</p> : null}
-            {voiceError ? <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-300">{voiceError}</p> : null}
-            {vibevoiceConfig?.error ? <p className="text-xs text-amber-700 dark:text-amber-300">{vibevoiceConfig.error}</p> : null}
+              {voiceStatus ? <p className="text-xs text-sky-700 dark:text-sky-300">{voiceStatus}</p> : null}
+              {voiceError ? <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-300">{voiceError}</p> : null}
+              {resolvedVibevoiceError ? <p className="text-xs text-amber-700 dark:text-amber-300">{resolvedVibevoiceError}</p> : null}
 
-            {audioUrl ? (
-              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/70">
-                <p className="text-xs uppercase tracking-[0.12em] text-slate-500">{t("lastGeneratedAudio")}</p>
-                <p className="text-sm text-slate-700 dark:text-slate-200">{audioSourceText}</p>
-                <audio ref={audioRef} src={audioUrl} controls className="w-full" />
+              {audioUrl ? (
+                <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/70">
+                  <p className="text-xs uppercase tracking-[0.12em] text-slate-500">{t("lastGeneratedAudio")}</p>
+                  <p className="text-sm text-slate-700 dark:text-slate-200">{audioSourceText}</p>
+                  <audio ref={audioRef} src={audioUrl} controls className="w-full" />
+                </div>
+              ) : null}
+            </Card>
+          ) : (
+            <Card className="space-y-3">
+              <p className="text-sm font-semibold">{t("vibevoiceEngine")}</p>
+              <p className="text-xs text-slate-500">{t("vibevoiceEngineDescription")}</p>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm dark:border-slate-700 dark:bg-slate-800/70">
+                <p className="font-medium text-slate-900 dark:text-slate-100">{t("browserVoiceFallbackActive")}</p>
+                <p className="mt-1 text-xs text-slate-500">{t("vibevoiceUnavailableHint")}</p>
               </div>
-            ) : null}
-          </Card>
+              {voiceError ? <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-300">{voiceError}</p> : null}
+            </Card>
+          )}
 
           <Card className="space-y-3">
             <div className="flex items-center justify-between gap-3">

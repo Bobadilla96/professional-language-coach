@@ -110,6 +110,7 @@ Without `OPENROUTER_API_KEY`, the app still works but AI assistant returns a con
 ## VibeVoice setup (conversation voice module)
 This project integrates with Microsoft `VibeVoice` realtime demo server.
 
+### Local development
 1. In another terminal, run VibeVoice web demo (GPU recommended):
 ```bash
 cd <path-to-VibeVoice>
@@ -122,7 +123,29 @@ NEXT_PUBLIC_VIBEVOICE_BASE_URL=http://127.0.0.1:8000
 ```
 3. Open `/conversation` and select voice preset.
 
-If VibeVoice server is down, conversation text coach still works and UI will show a guided voice error.
+### Production deployment
+Do not point production to `127.0.0.1`.
+
+The repository now includes a dedicated service scaffold under:
+
+```bash
+services/vibevoice
+```
+
+That service is intended to be deployed separately from the Next.js app, even though it lives in the same repository. See:
+
+```bash
+services/vibevoice/README.md
+```
+
+Then configure the web app with the public service URL:
+
+```bash
+VIBEVOICE_BASE_URL=https://your-vibevoice-host.example.com
+NEXT_PUBLIC_VIBEVOICE_BASE_URL=https://your-vibevoice-host.example.com
+```
+
+If VibeVoice is down, conversation text coach still works and production falls back to browser voice tools.
 
 ## Local content
 Private local learning materials are expected under:
@@ -143,7 +166,12 @@ This project is not a good candidate for GitHub Pages because it relies on:
 - Supabase SSR auth/session handling
 - local archive streaming for BBC assets
 
-For a real public deployment, use a server-capable platform such as Vercel.
+For a real public deployment, use a server-capable platform such as Vercel for the web app.
+
+For VibeVoice specifically:
+- keep the frontend on Vercel
+- deploy `services/vibevoice` on a GPU-capable host
+- connect both through `VIBEVOICE_BASE_URL`
 
 ### BBC in production
 If you deploy to Vercel or Netlify, local `cursos/*.rar` files will not exist there.

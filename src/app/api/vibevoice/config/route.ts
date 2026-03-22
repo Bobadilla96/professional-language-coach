@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 const DEFAULT_VIBEVOICE_BASE_URL = "http://127.0.0.1:8000";
+const CONFIG_TIMEOUT_MS = 5000;
 
 function resolveBaseUrl() {
   return (process.env.VIBEVOICE_BASE_URL ?? process.env.NEXT_PUBLIC_VIBEVOICE_BASE_URL ?? DEFAULT_VIBEVOICE_BASE_URL).replace(/\/$/, "");
@@ -12,7 +13,8 @@ export async function GET() {
   try {
     const response = await fetch(`${baseUrl}/config`, {
       method: "GET",
-      cache: "no-store"
+      cache: "no-store",
+      signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS)
     });
 
     if (!response.ok) {
@@ -22,7 +24,7 @@ export async function GET() {
           baseUrl,
           voices: [],
           defaultVoice: null,
-          error: `VibeVoice /config returned ${response.status}`
+          error: "VIBEVOICE_CONFIG_UNAVAILABLE"
         },
         { status: 200 }
       );
@@ -42,7 +44,7 @@ export async function GET() {
         baseUrl,
         voices: [],
         defaultVoice: null,
-        error: "VibeVoice server is not reachable."
+        error: "VIBEVOICE_UNREACHABLE"
       },
       { status: 200 }
     );
